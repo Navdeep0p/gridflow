@@ -2,11 +2,14 @@ name: Cloud APK Compiler
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - 'v*' # Triggers the build whenever you push a tag like v1.0, v1.0.1, etc.
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Crucial: Gives the runner permission to create a release
 
     steps:
       - name: Checkout Source Code
@@ -42,9 +45,11 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK to GitHub Artifacts (100% Native)
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release & Upload APK (Bypasses 500MB Limit)
+        uses: softprops/action-gh-release@v2
         with:
-          name: gridflow-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 7
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false

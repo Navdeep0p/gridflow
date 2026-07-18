@@ -32,11 +32,12 @@ jobs:
       - name: Install Dependencies & Build Web Layer
         run: |
           npm install
+          npm install @capacitor/cli @capacitor/core @capacitor/android
           npm run build
 
       - name: Capacitor Sync
         run: |
-          npx cap sync android
+          npx capacitor sync android
 
       - name: Compile Debug APK via Gradle
         run: |

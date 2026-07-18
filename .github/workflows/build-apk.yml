@@ -40,15 +40,25 @@ jobs:
           npx capacitor sync android
 
       - name: Compile Debug APK via Gradle
+        id: gradle_build
         run: |
-          cd android
+          # Dynamically locate the directory containing gradlew
+          GRADLE_DIR=$(dirname $(find . -name gradlew | head -n 1))
+          echo "Gradle directory found at: $GRADLE_DIR"
+          cd "$GRADLE_DIR"
+          
+          # Grant execution permissions and compile the APK
           chmod +x gradlew
           ./gradlew assembleDebug
+          
+          # Save the path to the generated APK for the release step
+          APK_PATH=$(find "$GRADLE_DIR" -name "app-debug.apk" | head -n 1)
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release & Upload APK (Bypasses 500MB Limit)
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: ${{ steps.gradle_build.outputs.apk_path }}
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           draft: false

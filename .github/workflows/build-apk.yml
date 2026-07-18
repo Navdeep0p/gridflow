@@ -15,6 +15,13 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      - name: Inject Production AdMob App ID securely
+        env:
+          REAL_ADMOB_ID: ${{ secrets.ADMOB_APP_ID }}
+        run: |
+          # Swap the placeholder with the secure environment secret inside the Manifest
+          sed -i "s/ADMOB_APP_ID_PLACEHOLDER/$REAL_ADMOB_ID/g" android/app/src/main/AndroidManifest.xml
+
       - name: Setup Node.js Environment
         uses: actions/setup-node@v4
         with:

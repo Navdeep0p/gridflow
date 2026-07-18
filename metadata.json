@@ -1,0 +1,6 @@
+{
+  "name": "Arrow Connect",
+  "description": "Align the arrows on the grid to create a continuous chain reaction that passes through every cell.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

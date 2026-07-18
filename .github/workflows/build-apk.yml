@@ -23,7 +23,7 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu' # or 'temurin'
+          distribution: 'zulu'
           java-version: '21'
           
       - name: Install Android SDK Components
@@ -39,26 +39,19 @@ jobs:
         run: |
           npx capacitor sync android
 
-      - name: Compile Debug APK via Gradle
-        id: gradle_build
+      - name: Compile Debug APK and Release AAB via Gradle
         run: |
-          # Dynamically locate the directory containing gradlew
-          GRADLE_DIR=$(dirname $(find . -name gradlew | head -n 1))
-          echo "Gradle directory found at: $GRADLE_DIR"
-          cd "$GRADLE_DIR"
-          
-          # Grant execution permissions and compile the APK
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-          
-          # Save the path to the generated APK for the release step
-          APK_PATH=$(find "$GRADLE_DIR" -name "app-debug.apk" | head -n 1)
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          ./gradlew bundleRelease
 
-      - name: Create GitHub Release & Upload APK (Bypasses 500MB Limit)
+      - name: Create GitHub Release & Upload Binaries
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.gradle_build.outputs.apk_path }}
+          files: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/bundle/release/app-release.aab
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           draft: false

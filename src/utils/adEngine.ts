@@ -1,66 +1,69 @@
 import { AdMob, BannerAdSize, BannerAdPosition } from '@capacitor-community/admob';
 
+const TEST_BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111";
+const TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917";
+
+/**
+ * Initializes AdMob SDK natively before any ad requests occur.
+ */
+export const initializeAdMob = async (): Promise<void> => {
+  if (typeof window !== 'undefined' && (window as any).Capacitor) {
+    try {
+      await AdMob.initialize({ initializeForTesting: true });
+      console.log("AdMob SDK initialized successfully.");
+    } catch (e) {
+      console.warn("AdMob SDK initialization warning:", e);
+    }
+  } else if (typeof window !== 'undefined') {
+    try {
+      (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+      console.log("AdMob/Google Ads web initialized.");
+    } catch (e) {
+      console.warn("AdMob web initialization warning:", e);
+    }
+  }
+};
+
+/**
+ * Renders native AdMob bottom banner using Google's public Test Banner ID.
+ * Should be called ONLY after initializeAdMob() promise completes.
+ */
+export const renderBanner = async (): Promise<void> => {
+  if (typeof window !== 'undefined' && (window as any).Capacitor) {
+    try {
+      const adId = (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || TEST_BANNER_AD_UNIT_ID;
+      await AdMob.showBanner({
+        adId,
+        adSize: BannerAdSize.BANNER,
+        position: BannerAdPosition.BOTTOM_CENTER,
+        margin: 0,
+      });
+      console.log("Native AdMob banner rendered successfully.");
+    } catch (e) {
+      console.warn("Error rendering native AdMob banner:", e);
+    }
+  }
+};
+
 /**
  * AdManager - Isolated Global Ad Engine Utility
- * Abstracts Google Ads & Native APK Wrapper (Capacitor) hooks.
  */
-
 export const AdManager = {
-  // Pull environment variables or fall back to official Google AdMob test IDs
-  BANNER_AD_UNIT_ID: (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || "ca-app-pub-3940256099942544/6300978111",
-  REWARDED_AD_UNIT_ID: (import.meta as any).env.VITE_REWARDED_AD_UNIT_ID || "ca-app-pub-3940256099942544/5224354917",
+  BANNER_AD_UNIT_ID: (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || TEST_BANNER_AD_UNIT_ID,
+  REWARDED_AD_UNIT_ID: (import.meta as any).env.VITE_REWARDED_AD_UNIT_ID || TEST_REWARDED_AD_UNIT_ID,
 
-  /**
-   * Checks if the game is running inside a native wrapper framework (e.g. Capacitor / Android APK).
-   */
   isNativeAPK(): boolean {
     return typeof window !== 'undefined' && !!(window as any).Capacitor;
   },
 
-  /**
-   * Initializes Google Adsense/AdMob for web and native environments.
-   */
   async init(): Promise<void> {
-    if (this.isNativeAPK()) {
-      try {
-        await AdMob.initialize({ initializeForTesting: true });
-        console.log(`AdManager: Native AdMob initialized.`);
-      } catch (e) {
-        console.warn("AdManager: Native AdMob initialization error:", e);
-      }
-    } else if (typeof window !== 'undefined') {
-      try {
-        (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-        console.log(`AdManager: Web Google Ads (adsbygoogle) initialized. Banner ID: ${this.BANNER_AD_UNIT_ID}`);
-      } catch (e) {
-        console.warn("AdManager: Failed to initialize Google Ads on web:", e);
-      }
-    }
+    await initializeAdMob();
   },
 
-  /**
-   * Triggers native bottom banner ad using Google's public Test Banner ID.
-   */
   async showBanner(): Promise<void> {
-    if (this.isNativeAPK()) {
-      try {
-        await AdMob.showBanner({
-          adId: this.BANNER_AD_UNIT_ID,
-          adSize: BannerAdSize.BANNER,
-          position: BannerAdPosition.BOTTOM_CENTER,
-          margin: 0,
-        });
-        console.log("AdManager: Native banner shown successfully.");
-      } catch (e) {
-        console.warn("AdManager: Error displaying native banner:", e);
-      }
-    }
+    await renderBanner();
   },
 
-  /**
-   * Triggers a rewarded video ad and resolves to onSuccess or onFailure.
-   * Runs a 1-second mocked timeout in local/testing environment before invoking callbacks.
-   */
   async showRewardedAd(onSuccess: () => void, onFailure: () => void): Promise<void> {
     console.log(`AdManager: showRewardedAd requested. Unit ID: ${this.REWARDED_AD_UNIT_ID}`);
     
@@ -90,10 +93,6 @@ export const AdManager = {
     }
   },
 
-  /**
-   * Triggers an interstitial ad and resolves on completion.
-   * Runs a 0.5-second mocked timeout in testing environments before invoking completion.
-   */
   async showInterstitialAd(onComplete?: () => void): Promise<void> {
     console.log("AdManager: showInterstitialAd requested.");
     

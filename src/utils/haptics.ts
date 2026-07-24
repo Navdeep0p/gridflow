@@ -4,11 +4,34 @@ import { Capacitor } from '@capacitor/core';
 export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection';
 
 /**
+ * Triggers lightweight tile/cell rotation haptic feedback using @capacitor/haptics,
+ * falling back to navigator.vibrate(15) if native bridge fails or on web.
+ */
+export const triggerTileHaptic = async (intensity: number = 1.0): Promise<void> => {
+  if (intensity <= 0) return;
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await Haptics.impact({ style: ImpactStyle.Light });
+      return;
+    } catch (e) {
+      console.warn('Capacitor Haptics failed, attempting fallback:', e);
+    }
+  }
+
+  // Fallback to HTML5 Vibrator API (15ms pattern)
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate(15);
+    } catch (e) {
+      // Ignore web vibration errors
+    }
+  }
+};
+
+/**
  * Triggers native Android/iOS haptic feedback using @capacitor/haptics,
  * with intensity scaling and a smooth fallback for web browsers.
- *
- * @param type The type of haptic feedback to play.
- * @param intensity Haptic intensity scalar between 0 and 1. If 0, haptics are suppressed.
  */
 export const triggerHaptic = async (type: HapticType = 'light', intensity: number = 1.0): Promise<void> => {
   if (intensity <= 0) return;
@@ -40,7 +63,7 @@ export const triggerHaptic = async (type: HapticType = 'light', intensity: numbe
           await Haptics.selectionChanged();
           break;
         default:
-          await Haptics.vibrate({ duration: 10 });
+          await Haptics.vibrate({ duration: 15 });
       }
       return;
     } catch (e) {
@@ -48,10 +71,10 @@ export const triggerHaptic = async (type: HapticType = 'light', intensity: numbe
     }
   }
 
-  // Web / Browser fallback using standard HTML5 Vibrator API (default 10ms)
+  // Web / Browser fallback using standard HTML5 Vibrator API (default 15ms)
   if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
     try {
-      navigator.vibrate(10);
+      navigator.vibrate(15);
     } catch (e) {
       // Ignore web vibration restriction errors
     }

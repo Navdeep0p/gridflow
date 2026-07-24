@@ -32,11 +32,11 @@ import { generateSolvableLevel } from './levelGenerator';
 import ParticleOverlay from './components/ParticleOverlay';
 import HelpDialog from './components/HelpDialog';
 import LevelSelectorDrawer from './components/LevelSelectorDrawer';
-import { AdManager } from './utils/adEngine';
+import { AdManager, initializeAdMob, renderBanner } from './utils/adEngine';
 import { AdBanner } from './components/AdBanner';
 import { AdMob } from '@capacitor-community/admob';
 import { Browser } from '@capacitor/browser';
-import { triggerHaptic, HapticType } from './utils/haptics';
+import { triggerHaptic, triggerTileHaptic, HapticType } from './utils/haptics';
 import { STORAGE_KEYS, setStorageItem, getStorageItemSync, hydrateStorageFromNative, saveLevelComplete } from './utils/storage';
 
 const cloneGrid = (g: Cell[][]): Cell[][] => JSON.parse(JSON.stringify(g));
@@ -299,10 +299,13 @@ export default function App() {
   const [isAdPlaying, setIsAdPlaying] = useState<boolean>(false);
 
   useEffect(() => {
-    AdMob.initialize({ initializeForTesting: true }).catch((err) => {
-      console.warn("AdMob initialize failed:", err);
-    });
-    AdManager.init();
+    initializeAdMob()
+      .then(() => {
+        renderBanner();
+      })
+      .catch((err) => {
+        console.warn("AdMob initialization/banner error:", err);
+      });
   }, []);
 
   // Hydrate all state from native Capacitor Preferences on app boot
@@ -517,7 +520,7 @@ export default function App() {
     }
 
     // Gentle tactile tick
-    triggerHaptic('light', hapticIntensity);
+    triggerTileHaptic(hapticIntensity);
     playFeedback('click');
 
     // Save state before rotation

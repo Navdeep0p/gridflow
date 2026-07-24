@@ -10,7 +10,7 @@ export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 
  * @param type The type of haptic feedback to play.
  * @param intensity Haptic intensity scalar between 0 and 1. If 0, haptics are suppressed.
  */
-export const triggerHaptic = async (type: HapticType, intensity: number = 1.0): Promise<void> => {
+export const triggerHaptic = async (type: HapticType = 'light', intensity: number = 1.0): Promise<void> => {
   if (intensity <= 0) return;
 
   const isNative = Capacitor.isNativePlatform();
@@ -39,6 +39,8 @@ export const triggerHaptic = async (type: HapticType, intensity: number = 1.0): 
         case 'selection':
           await Haptics.selectionChanged();
           break;
+        default:
+          await Haptics.vibrate({ duration: 10 });
       }
       return;
     } catch (e) {
@@ -46,46 +48,10 @@ export const triggerHaptic = async (type: HapticType, intensity: number = 1.0): 
     }
   }
 
-  // Web / Browser fallback using standard HTML5 Vibrator API
-  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+  // Web / Browser fallback using standard HTML5 Vibrator API (default 10ms)
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
     try {
-      let pattern: number | number[];
-      switch (type) {
-        case 'light':
-        case 'selection':
-          pattern = Math.max(4, Math.round(15 * intensity));
-          break;
-        case 'medium':
-          pattern = Math.max(8, Math.round(35 * intensity));
-          break;
-        case 'heavy':
-          pattern = Math.max(12, Math.round(70 * intensity));
-          break;
-        case 'success': {
-          const p1 = Math.max(8, Math.round(30 * intensity));
-          const gap = Math.max(8, Math.round(40 * intensity));
-          const p2 = Math.max(8, Math.round(30 * intensity));
-          pattern = [p1, gap, p2];
-          break;
-        }
-        case 'warning': {
-          const p1 = Math.max(12, Math.round(45 * intensity));
-          const gap = Math.max(12, Math.round(50 * intensity));
-          const p2 = Math.max(12, Math.round(45 * intensity));
-          pattern = [p1, gap, p2];
-          break;
-        }
-        case 'error': {
-          const p1 = Math.max(25, Math.round(100 * intensity));
-          const gap = Math.max(15, Math.round(40 * intensity));
-          const p2 = Math.max(25, Math.round(100 * intensity));
-          pattern = [p1, gap, p2];
-          break;
-        }
-        default:
-          pattern = Math.max(5, Math.round(20 * intensity));
-      }
-      navigator.vibrate(pattern);
+      navigator.vibrate(10);
     } catch (e) {
       // Ignore web vibration restriction errors
     }

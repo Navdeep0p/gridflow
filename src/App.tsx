@@ -34,6 +34,7 @@ import HelpDialog from './components/HelpDialog';
 import LevelSelectorDrawer from './components/LevelSelectorDrawer';
 import { AdManager } from './utils/adEngine';
 import { AdBanner } from './components/AdBanner';
+import { AdMob } from '@capacitor-community/admob';
 import { Browser } from '@capacitor/browser';
 import { triggerHaptic, HapticType } from './utils/haptics';
 import { STORAGE_KEYS, setStorageItem, getStorageItemSync, hydrateStorageFromNative, saveLevelComplete } from './utils/storage';
@@ -298,6 +299,9 @@ export default function App() {
   const [isAdPlaying, setIsAdPlaying] = useState<boolean>(false);
 
   useEffect(() => {
+    AdMob.initialize({ initializeForTesting: true }).catch((err) => {
+      console.warn("AdMob initialize failed:", err);
+    });
     AdManager.init();
   }, []);
 
@@ -513,6 +517,7 @@ export default function App() {
     }
 
     // Gentle tactile tick
+    triggerHaptic('light', hapticIntensity);
     playFeedback('click');
 
     // Save state before rotation

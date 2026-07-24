@@ -1,3 +1,5 @@
+import { AdMob, BannerAdSize, BannerAdPosition } from '@capacitor-community/admob';
+
 /**
  * AdManager - Isolated Global Ad Engine Utility
  * Abstracts Google Ads & Native APK Wrapper (Capacitor) hooks.
@@ -16,15 +18,41 @@ export const AdManager = {
   },
 
   /**
-   * Initializes Google Adsense/AdMob for web environments.
+   * Initializes Google Adsense/AdMob for web and native environments.
    */
-  init(): void {
-    if (typeof window !== 'undefined' && !this.isNativeAPK()) {
+  async init(): Promise<void> {
+    if (this.isNativeAPK()) {
+      try {
+        await AdMob.initialize({ initializeForTesting: true });
+        console.log(`AdManager: Native AdMob initialized.`);
+      } catch (e) {
+        console.warn("AdManager: Native AdMob initialization error:", e);
+      }
+    } else if (typeof window !== 'undefined') {
       try {
         (window as any).adsbygoogle = (window as any).adsbygoogle || [];
         console.log(`AdManager: Web Google Ads (adsbygoogle) initialized. Banner ID: ${this.BANNER_AD_UNIT_ID}`);
       } catch (e) {
         console.warn("AdManager: Failed to initialize Google Ads on web:", e);
+      }
+    }
+  },
+
+  /**
+   * Triggers native bottom banner ad using Google's public Test Banner ID.
+   */
+  async showBanner(): Promise<void> {
+    if (this.isNativeAPK()) {
+      try {
+        await AdMob.showBanner({
+          adId: this.BANNER_AD_UNIT_ID,
+          adSize: BannerAdSize.BANNER,
+          position: BannerAdPosition.BOTTOM_CENTER,
+          margin: 0,
+        });
+        console.log("AdManager: Native banner shown successfully.");
+      } catch (e) {
+        console.warn("AdManager: Error displaying native banner:", e);
       }
     }
   },
@@ -38,7 +66,6 @@ export const AdManager = {
     
     if (this.isNativeAPK()) {
       console.log(`AdManager: Native APK environment detected. Triggering native AdMob Rewarded plugin hook with Unit ID: ${this.REWARDED_AD_UNIT_ID}`);
-      // Native plugin mock callback hook (to be hooked to capacitor-admob in Android build)
       setTimeout(() => {
         try {
           onSuccess();

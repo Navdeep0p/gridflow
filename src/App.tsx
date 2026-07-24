@@ -35,6 +35,8 @@ import LevelSelectorDrawer from './components/LevelSelectorDrawer';
 import { AdManager } from './utils/adEngine';
 import { AdBanner } from './components/AdBanner';
 import { Browser } from '@capacitor/browser';
+import { triggerHaptic, HapticType } from './utils/haptics';
+import { STORAGE_KEYS, setStorageItem, getStorageItemSync, hydrateStorageFromNative, saveLevelComplete } from './utils/storage';
 
 const cloneGrid = (g: Cell[][]): Cell[][] => JSON.parse(JSON.stringify(g));
 
@@ -120,33 +122,29 @@ const THEMES = [
 export default function App() {
   // Game States
   const [level, setLevel] = useState<number>(() => {
-    const saved = localStorage.getItem('arrow_connect_level');
-    return saved ? parseInt(saved, 10) : 1;
+    return getStorageItemSync<number>(STORAGE_KEYS.LEVEL, 1);
   });
 
   const [unlockedLevel, setUnlockedLevel] = useState<number>(() => {
-    const saved = localStorage.getItem('arrow_connect_unlocked');
-    return saved ? parseInt(saved, 10) : 1;
+    return getStorageItemSync<number>(STORAGE_KEYS.UNLOCKED, 1);
   });
 
   const [levelStars, setLevelStars] = useState<Record<number, number>>(() => {
-    const saved = localStorage.getItem('arrow_connect_stars');
-    return saved ? JSON.parse(saved) : {};
+    return getStorageItemSync<Record<number, number>>(STORAGE_KEYS.STARS, {});
   });
 
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    return getStorageItemSync<boolean>(STORAGE_KEYS.SOUND_ENABLED, true);
+  });
   const [audioVolume, setAudioVolume] = useState<number>(() => {
-    const saved = localStorage.getItem('arrow_connect_audio_volume');
-    return saved !== null ? parseFloat(saved) : 0.8;
+    return getStorageItemSync<number>(STORAGE_KEYS.AUDIO_VOLUME, 0.8);
   });
   const [hapticIntensity, setHapticIntensity] = useState<number>(() => {
-    const saved = localStorage.getItem('arrow_connect_haptic_intensity');
-    return saved !== null ? parseFloat(saved) : 1.0;
+    return getStorageItemSync<number>(STORAGE_KEYS.HAPTIC_INTENSITY, 1.0);
   });
 
   const [appTheme, setAppTheme] = useState<'dark' | 'light' | 'system'>(() => {
-    // Keep the internal appTheme state baseline locked to 'dark'
-    return 'dark';
+    return getStorageItemSync<'dark' | 'light' | 'system'>(STORAGE_KEYS.APP_THEME, 'dark');
   });
 
   useEffect(() => {
@@ -181,68 +179,8 @@ export default function App() {
     }
   }, [appTheme]);
 
-  const triggerHaptic = (type: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error') => {
-    if (hapticIntensity === 0) return;
-
-    // Try native capacitor haptics first
-    const haptics = (window as any).Capacitor?.Plugins?.Haptics;
-    if (haptics) {
-      try {
-        if (type === 'light') {
-          haptics.impact({ style: 'LIGHT' });
-        } else if (type === 'medium') {
-          haptics.impact({ style: 'MEDIUM' });
-        } else if (type === 'heavy') {
-          haptics.impact({ style: 'HEAVY' });
-        } else if (type === 'success') {
-          haptics.notification({ type: 'SUCCESS' });
-        } else if (type === 'warning') {
-          haptics.notification({ type: 'WARNING' });
-        } else if (type === 'error') {
-          haptics.notification({ type: 'ERROR' });
-        }
-        return; // Success, don't run web fallback
-      } catch (e) {
-        console.warn("Capacitor haptics error, falling back to web vibrate:", e);
-      }
-    }
-
-    // Web Fallback: navigator.vibrate
-    if (navigator.vibrate) {
-      const scale = hapticIntensity;
-      
-      let pattern: number | number[];
-      if (type === 'light') {
-        pattern = Math.max(5, Math.round(15 * scale));
-      } else if (type === 'medium') {
-        pattern = Math.max(10, Math.round(35 * scale));
-      } else if (type === 'heavy') {
-        pattern = Math.max(15, Math.round(70 * scale));
-      } else if (type === 'success') {
-        const p1 = Math.max(10, Math.round(30 * scale));
-        const gap = Math.max(10, Math.round(40 * scale));
-        const p2 = Math.max(10, Math.round(30 * scale));
-        pattern = [p1, gap, p2];
-      } else if (type === 'warning') {
-        const p1 = Math.max(15, Math.round(50 * scale));
-        const gap = Math.max(15, Math.round(60 * scale));
-        const p2 = Math.max(15, Math.round(50 * scale));
-        pattern = [p1, gap, p2];
-      } else if (type === 'error') {
-        const p1 = Math.max(30, Math.round(120 * scale));
-        const gap = Math.max(20, Math.round(50 * scale));
-        const p2 = Math.max(30, Math.round(120 * scale));
-        pattern = [p1, gap, p2];
-      } else {
-        pattern = Math.max(5, Math.round(20 * scale));
-      }
-      
-      try {
-        navigator.vibrate(pattern);
-      } catch (e) {
-        // Ignored
-      }
-    }
+  const triggerAppHaptic = (type: HapticType) => {
+    triggerHaptic(type, hapticIntensity);
   };
 
   const playSound = (type: 'click' | 'undo' | 'success' | 'warning' | 'error') => {
@@ -341,20 +279,19 @@ export default function App() {
   const playFeedback = (profile: 'click' | 'undo' | 'success' | 'warning' | 'error') => {
     playSound(profile);
 
-    let hapticType: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' = 'light';
+    let hapticType: HapticType = 'light';
     if (profile === 'click') hapticType = 'light';
     else if (profile === 'undo') hapticType = 'medium';
     else if (profile === 'success') hapticType = 'success';
     else if (profile === 'warning') hapticType = 'warning';
     else if (profile === 'error') hapticType = 'error';
 
-    triggerHaptic(hapticType);
+    triggerAppHaptic(hapticType);
   };
 
   // Economy, Star Deduction and Simulated Ad States
   const [starDeduction, setStarDeduction] = useState<number>(() => {
-    const saved = localStorage.getItem('arrow_connect_star_deduction');
-    return saved ? parseInt(saved, 10) : 0;
+    return getStorageItemSync<number>(STORAGE_KEYS.STAR_DEDUCTION, 0);
   });
   const [adReason, setAdReason] = useState<'undo' | 'restart' | null>(null);
   const [adProgress, setAdProgress] = useState<number>(-1);
@@ -362,6 +299,55 @@ export default function App() {
 
   useEffect(() => {
     AdManager.init();
+  }, []);
+
+  // Hydrate all state from native Capacitor Preferences on app boot
+  useEffect(() => {
+    hydrateStorageFromNative().then((hydrated) => {
+      if (hydrated[STORAGE_KEYS.LEVEL]) {
+        const lvl = parseInt(hydrated[STORAGE_KEYS.LEVEL], 10);
+        if (!isNaN(lvl)) setLevel(lvl);
+      }
+      if (hydrated[STORAGE_KEYS.UNLOCKED]) {
+        const unl = parseInt(hydrated[STORAGE_KEYS.UNLOCKED], 10);
+        if (!isNaN(unl)) setUnlockedLevel(unl);
+      }
+      if (hydrated[STORAGE_KEYS.STARS]) {
+        try {
+          setLevelStars(JSON.parse(hydrated[STORAGE_KEYS.STARS]));
+        } catch (e) {}
+      }
+      if (hydrated[STORAGE_KEYS.SOUND_ENABLED]) {
+        setSoundEnabled(hydrated[STORAGE_KEYS.SOUND_ENABLED] === 'true');
+      }
+      if (hydrated[STORAGE_KEYS.AUDIO_VOLUME]) {
+        const vol = parseFloat(hydrated[STORAGE_KEYS.AUDIO_VOLUME]);
+        if (!isNaN(vol)) setAudioVolume(vol);
+      }
+      if (hydrated[STORAGE_KEYS.HAPTIC_INTENSITY]) {
+        const hap = parseFloat(hydrated[STORAGE_KEYS.HAPTIC_INTENSITY]);
+        if (!isNaN(hap)) setHapticIntensity(hap);
+      }
+      if (hydrated[STORAGE_KEYS.APP_THEME]) {
+        const th = hydrated[STORAGE_KEYS.APP_THEME] as 'dark' | 'light' | 'system';
+        if (th) setAppTheme(th);
+      }
+      if (hydrated[STORAGE_KEYS.PROFILE_NAME]) {
+        setProfileName(hydrated[STORAGE_KEYS.PROFILE_NAME]);
+        setTempProfileName(hydrated[STORAGE_KEYS.PROFILE_NAME]);
+      }
+      if (hydrated[STORAGE_KEYS.STAR_DEDUCTION]) {
+        const ded = parseInt(hydrated[STORAGE_KEYS.STAR_DEDUCTION], 10);
+        if (!isNaN(ded)) setStarDeduction(ded);
+      }
+      if (hydrated[STORAGE_KEYS.TUTORIAL_COMPLETED]) {
+        setTutorialCompleted(hydrated[STORAGE_KEYS.TUTORIAL_COMPLETED] === 'true');
+      }
+      if (hydrated[STORAGE_KEYS.SELECTED_PHASE]) {
+        const phase = parseInt(hydrated[STORAGE_KEYS.SELECTED_PHASE], 10) as 1 | 2 | 3;
+        if (phase === 1 || phase === 2 || phase === 3) setSelectedPhaseTab(phase);
+      }
+    });
   }, []);
 
   // Active level states
@@ -381,7 +367,7 @@ export default function App() {
 
   // Tutorial and Solution states
   const [tutorialCompleted, setTutorialCompleted] = useState<boolean>(() => {
-    return localStorage.getItem('hasCompletedTutorial') === 'true';
+    return getStorageItemSync<boolean>(STORAGE_KEYS.TUTORIAL_COMPLETED, false);
   });
   const [solutionDirections, setSolutionDirections] = useState<{ row: number; col: number; direction: string }[]>([]);
 
@@ -404,18 +390,19 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'game'>('landing');
   const [landingTab, setLandingTab] = useState<'home' | 'settings'>('home');
   const [selectedPhaseTab, setSelectedPhaseTab] = useState<1 | 2 | 3>(() => {
-    const savedUnlocked = localStorage.getItem('arrow_connect_unlocked');
-    const unlocked = savedUnlocked ? parseInt(savedUnlocked, 10) : 1;
+    const savedPhase = getStorageItemSync<number>(STORAGE_KEYS.SELECTED_PHASE, 0);
+    if (savedPhase === 1 || savedPhase === 2 || savedPhase === 3) return savedPhase as 1 | 2 | 3;
+    const unlocked = getStorageItemSync<number>(STORAGE_KEYS.UNLOCKED, 1);
     if (unlocked <= 35) return 1;
     if (unlocked <= 85) return 2;
     return 3;
   });
   const [settingsSubView, setSettingsSubView] = useState<'menu' | 'profile' | 'about'>('menu');
   const [profileName, setProfileName] = useState<string>(() => {
-    return localStorage.getItem('arrow_connect_profile_name') || 'Pilot';
+    return getStorageItemSync<string>(STORAGE_KEYS.PROFILE_NAME, 'Pilot');
   });
   const [tempProfileName, setTempProfileName] = useState<string>(() => {
-    return localStorage.getItem('arrow_connect_profile_name') || 'Pilot';
+    return getStorageItemSync<string>(STORAGE_KEYS.PROFILE_NAME, 'Pilot');
   });
 
   // Success stats (stored temporarily to animate stars)
@@ -440,8 +427,8 @@ export default function App() {
   }, [showGameOverPopup, showPenaltySelection]);
 
   const loadLevel = (lvlNum: number) => {
-    // Save current level to localStorage
-    localStorage.setItem('arrow_connect_level', String(lvlNum));
+    // Save current level to App Data & localStorage
+    setStorageItem(STORAGE_KEYS.LEVEL, lvlNum);
     
     // Generate level from solver algorithm
     const levelData = generateSolvableLevel(lvlNum);
@@ -658,7 +645,7 @@ export default function App() {
     if (totalStars >= 10) {
       const newDeduction = starDeduction + 10;
       setStarDeduction(newDeduction);
-      localStorage.setItem('arrow_connect_star_deduction', String(newDeduction));
+      setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
 
       setGameOverCount(0);
       setShowGameOverPopup(false);
@@ -700,7 +687,7 @@ export default function App() {
         setIsAdPlaying(false);
         const newDeduction = starDeduction + 10;
         setStarDeduction(newDeduction);
-        localStorage.setItem('arrow_connect_star_deduction', String(newDeduction));
+        setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
 
         setGameOverCount(0);
         setShowGameOverPopup(false);
@@ -723,7 +710,7 @@ export default function App() {
     if (totalStars >= 10) {
       const newDeduction = starDeduction + 10;
       setStarDeduction(newDeduction);
-      localStorage.setItem('arrow_connect_star_deduction', String(newDeduction));
+      setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
       executeReset();
       setShowRestartConfirm(false);
     } else {
@@ -739,7 +726,7 @@ export default function App() {
     if (totalStars >= 3) {
       const newDeduction = starDeduction + 3;
       setStarDeduction(newDeduction);
-      localStorage.setItem('arrow_connect_star_deduction', String(newDeduction));
+      setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
 
       playFeedback('undo');
       executeUndo();
@@ -811,22 +798,27 @@ export default function App() {
         }
         setStarsEarned(stars);
 
-        // Save progress
+        // Save progress to App Data & localStorage
         const updatedStars = { ...levelStars, [level]: Math.max(levelStars[level] || 0, stars) };
         setLevelStars(updatedStars);
-        localStorage.setItem('arrow_connect_stars', JSON.stringify(updatedStars));
 
-        // Save tutorial completion state on Level 1 success
+        let nextLvl = unlockedLevel;
+        if (level === unlockedLevel && unlockedLevel < 185) {
+          nextLvl = level + 1;
+          setUnlockedLevel(nextLvl);
+        }
+
+        const isTutComp = level === 1 ? true : tutorialCompleted;
         if (level === 1) {
-          localStorage.setItem('hasCompletedTutorial', 'true');
           setTutorialCompleted(true);
         }
 
-        if (level === unlockedLevel && unlockedLevel < 185) {
-          const nextLvl = level + 1;
-          setUnlockedLevel(nextLvl);
-          localStorage.setItem('arrow_connect_unlocked', String(nextLvl));
-        }
+        saveLevelComplete({
+          level,
+          unlockedLevel: nextLvl,
+          levelStars: updatedStars,
+          tutorialCompleted: isTutComp,
+        });
 
         // Spawn beautiful celebratory particles
         setTimeout(() => {
@@ -942,6 +934,10 @@ export default function App() {
   };
 
   const navigateToHome = () => {
+    setStorageItem(STORAGE_KEYS.LEVEL, level);
+    setStorageItem(STORAGE_KEYS.UNLOCKED, unlockedLevel);
+    setStorageItem(STORAGE_KEYS.STARS, levelStars);
+    setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, starDeduction);
     AdManager.showInterstitialAd(() => {
       setCurrentView('landing');
       setLandingTab('home');
@@ -1193,7 +1189,11 @@ export default function App() {
                         <span className="text-[9px] font-mono text-neutral-600 dark:text-neutral-400 mt-0.5">Mute or enable all sound cues</span>
                       </div>
                       <button
-                        onClick={() => setSoundEnabled(!soundEnabled)}
+                        onClick={() => {
+                          const next = !soundEnabled;
+                          setSoundEnabled(next);
+                          setStorageItem(STORAGE_KEYS.SOUND_ENABLED, String(next));
+                        }}
                         className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ${
                           soundEnabled ? "bg-amber-500" : "bg-neutral-350 dark:bg-zinc-900"
                         } relative flex items-center cursor-pointer`}
@@ -1224,7 +1224,7 @@ export default function App() {
                         onChange={(e) => {
                           const val = parseFloat(e.target.value);
                           setAudioVolume(val);
-                          localStorage.setItem('arrow_connect_audio_volume', String(val));
+                          setStorageItem(STORAGE_KEYS.AUDIO_VOLUME, val);
                         }}
                         className="w-full h-1 bg-neutral-300 dark:bg-neutral-850 rounded-lg appearance-none cursor-pointer accent-pink-500"
                       />
@@ -1248,7 +1248,8 @@ export default function App() {
                         onChange={(e) => {
                           const val = parseFloat(e.target.value);
                           setHapticIntensity(val);
-                          localStorage.setItem('arrow_connect_haptic_intensity', String(val));
+                          setStorageItem(STORAGE_KEYS.HAPTIC_INTENSITY, val);
+                          triggerHaptic('light', val);
                         }}
                         className="w-full h-1 bg-neutral-300 dark:bg-neutral-850 rounded-lg appearance-none cursor-pointer accent-pink-500"
                       />
@@ -1269,7 +1270,7 @@ export default function App() {
                             key={t}
                             onClick={() => {
                               setAppTheme(t);
-                              localStorage.setItem('arrow_connect_app_theme', t);
+                              setStorageItem(STORAGE_KEYS.APP_THEME, t);
                               playFeedback('click');
                             }}
                             className={`flex-1 py-1.5 text-[10px] font-display font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
@@ -1329,7 +1330,7 @@ export default function App() {
                       onClick={() => {
                         const cleaned = tempProfileName.trim() || 'Pilot';
                         setProfileName(cleaned);
-                        localStorage.setItem('arrow_connect_profile_name', cleaned);
+                        setStorageItem(STORAGE_KEYS.PROFILE_NAME, cleaned);
                         setSettingsSubView('menu');
                       }}
                       className="w-full py-3 bg-zinc-50 hover:bg-zinc-200 text-black font-display font-bold text-xs tracking-[0.1em] uppercase rounded-full shadow-lg active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
@@ -2379,7 +2380,11 @@ export default function App() {
                   <span className="text-[10px] font-mono text-neutral-600 dark:text-neutral-400 mt-0.5">Mute or enable all sound cues</span>
                 </div>
                 <button
-                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  onClick={() => {
+                    const next = !soundEnabled;
+                    setSoundEnabled(next);
+                    setStorageItem(STORAGE_KEYS.SOUND_ENABLED, String(next));
+                  }}
                   className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ${
                     soundEnabled ? "bg-amber-500" : "bg-neutral-300 dark:bg-zinc-800"
                   } relative flex items-center cursor-pointer`}
@@ -2410,7 +2415,7 @@ export default function App() {
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
                     setAudioVolume(val);
-                    localStorage.setItem('arrow_connect_audio_volume', String(val));
+                    setStorageItem(STORAGE_KEYS.AUDIO_VOLUME, val);
                   }}
                   className="w-full h-1 bg-neutral-300 dark:bg-neutral-850 rounded-lg appearance-none cursor-pointer accent-pink-500"
                 />
@@ -2434,7 +2439,8 @@ export default function App() {
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
                     setHapticIntensity(val);
-                    localStorage.setItem('arrow_connect_haptic_intensity', String(val));
+                    setStorageItem(STORAGE_KEYS.HAPTIC_INTENSITY, val);
+                    triggerHaptic('light', val);
                   }}
                   className="w-full h-1 bg-neutral-300 dark:bg-neutral-850 rounded-lg appearance-none cursor-pointer accent-pink-500"
                 />

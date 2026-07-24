@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Lock, Star, ChevronRight } from 'lucide-react';
 
+import { STORAGE_KEYS, getStorageItemSync, setStorageItem } from '../utils/storage';
+
 interface LevelSelectorDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -22,10 +24,17 @@ export default function LevelSelectorDrawer({
   const TOTAL_LEVELS = 185;
 
   const [selectedPhaseTab, setSelectedPhaseTab] = useState<1 | 2 | 3>(() => {
+    const saved = getStorageItemSync<number>(STORAGE_KEYS.SELECTED_PHASE, 0);
+    if (saved === 1 || saved === 2 || saved === 3) return saved as 1 | 2 | 3;
     if (currentLevel <= 35) return 1;
     if (currentLevel <= 85) return 2;
     return 3;
   });
+
+  const handleTabChange = (tab: 1 | 2 | 3) => {
+    setSelectedPhaseTab(tab);
+    setStorageItem(STORAGE_KEYS.SELECTED_PHASE, tab);
+  };
 
   const phaseLevelsInfo = {
     1: { start: 1, length: 35, title: 'Phase 1: Direct' },
@@ -83,7 +92,7 @@ export default function LevelSelectorDrawer({
             {/* Phase Tabs Inside Drawer */}
             <div className="w-full px-6 pt-4 pb-2 bg-white dark:bg-zinc-950 flex gap-1.5">
               <button
-                onClick={() => setSelectedPhaseTab(1)}
+                onClick={() => handleTabChange(1)}
                 className={`flex-1 py-1.5 text-[9px] font-mono font-medium tracking-wider uppercase rounded-lg transition-all cursor-pointer ${
                   selectedPhaseTab === 1
                     ? 'bg-amber-400/10 border border-amber-500/20 text-amber-500 dark:text-amber-400'
@@ -93,7 +102,7 @@ export default function LevelSelectorDrawer({
                 Ph 1 (1-35)
               </button>
               <button
-                onClick={() => setSelectedPhaseTab(2)}
+                onClick={() => handleTabChange(2)}
                 className={`flex-1 py-1.5 text-[9px] font-mono font-medium tracking-wider uppercase rounded-lg transition-all cursor-pointer ${
                   selectedPhaseTab === 2
                     ? 'bg-amber-400/10 border border-amber-500/20 text-amber-500 dark:text-amber-400'
@@ -103,7 +112,7 @@ export default function LevelSelectorDrawer({
                 Ph 2 (36-85)
               </button>
               <button
-                onClick={() => setSelectedPhaseTab(3)}
+                onClick={() => handleTabChange(3)}
                 className={`flex-1 py-1.5 text-[9px] font-mono font-medium tracking-wider uppercase rounded-lg transition-all cursor-pointer ${
                   selectedPhaseTab === 3
                     ? 'bg-amber-400/10 border border-amber-500/20 text-amber-500 dark:text-amber-400'

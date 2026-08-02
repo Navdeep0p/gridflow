@@ -48,6 +48,7 @@ export const initializeAdMob = async (): Promise<void> => {
 
 /**
  * Renders native AdMob bottom banner using Google's public Test Banner ID.
+ * Configured with BannerAdPosition.BOTTOM_CENTER so the 320x50 banner overlay stays horizontally centered.
  */
 export const renderBanner = async (): Promise<void> => {
   if (Capacitor.isNativePlatform()) {
@@ -59,8 +60,9 @@ export const renderBanner = async (): Promise<void> => {
         adSize: BannerAdSize.BANNER,
         position: BannerAdPosition.BOTTOM_CENTER,
         margin: 0,
+        isTesting: true,
       });
-      console.log("Native AdMob banner rendered successfully.");
+      console.log("Native AdMob 320x50 banner rendered successfully in BOTTOM_CENTER.");
     } catch (e) {
       console.error("Error rendering native AdMob banner:", e);
     }

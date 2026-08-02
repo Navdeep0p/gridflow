@@ -36,6 +36,7 @@ import { AdManager, initializeAdMob, renderBanner } from './utils/adEngine';
 import { AdBanner } from './components/AdBanner';
 import { AdMob } from '@capacitor-community/admob';
 import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
 import { triggerHaptic, triggerTileHaptic, HapticType } from './utils/haptics';
 import { audioManager, SoundType } from './utils/audio';
 import { STORAGE_KEYS, setStorageItem, getStorageItemSync, hydrateStorageFromNative, saveLevelComplete } from './utils/storage';
@@ -1369,7 +1370,9 @@ export default function App() {
           )}
 
           {/* Permanent Home Screen Banner Placement directly above the bottom nav bar */}
-          <div className="absolute bottom-18 left-0 right-0 h-16 bg-white/95 dark:bg-zinc-950/95 border-t border-neutral-200 dark:border-neutral-800 backdrop-blur-md z-30 max-w-md mx-auto flex items-center justify-center px-4">
+          <div className={`absolute bottom-18 left-0 right-0 h-16 z-30 max-w-md mx-auto flex items-center justify-center px-4 ${
+            Capacitor.isNativePlatform() ? '' : 'bg-white/95 dark:bg-zinc-950/95 border-t border-neutral-200 dark:border-neutral-800 backdrop-blur-md'
+          }`}>
             <AdBanner />
           </div>
 

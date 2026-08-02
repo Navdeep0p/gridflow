@@ -1,27 +1,49 @@
-import { AdMob, BannerAdSize, BannerAdPosition } from '@capacitor-community/admob';
+import {
+  AdMob,
+  BannerAdSize,
+  BannerAdPosition,
+  RewardAdOptions,
+  AdOptions
+} from '@capacitor-community/admob';
+import { Capacitor } from '@capacitor/core';
 
+// Official Google AdMob Test Ad Unit IDs for Android
 const TEST_BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111";
+const TEST_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712";
 const TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917";
+
+let isAdMobInitialized = false;
+let initPromise: Promise<void> | null = null;
 
 /**
  * Initializes AdMob SDK natively before any ad requests occur.
  */
 export const initializeAdMob = async (): Promise<void> => {
-  if (typeof window !== 'undefined' && (window as any).Capacitor) {
-    try {
-      await AdMob.initialize({ initializeForTesting: true });
-      console.log("AdMob SDK initialized successfully.");
-    } catch (e) {
-      console.warn("AdMob SDK initialization warning:", e);
-    }
-  } else if (typeof window !== 'undefined') {
-    try {
-      (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-      console.log("AdMob/Google Ads web initialized.");
-    } catch (e) {
-      console.warn("AdMob web initialization warning:", e);
-    }
+  if (isAdMobInitialized) return;
+
+  if (!initPromise) {
+    initPromise = (async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await AdMob.initialize({ initializeForTesting: true });
+          isAdMobInitialized = true;
+          console.log("AdMob SDK initialized successfully on native platform.");
+        } catch (e) {
+          console.error("AdMob SDK initialization error:", e);
+        }
+      } else if (typeof window !== 'undefined') {
+        try {
+          (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+          isAdMobInitialized = true;
+          console.log("AdMob/Google Ads web initialized.");
+        } catch (e) {
+          console.warn("AdMob web initialization warning:", e);
+        }
+      }
+    })();
   }
+
+  await initPromise;
 };
 
 /**
@@ -29,8 +51,9 @@ export const initializeAdMob = async (): Promise<void> => {
  * Should be called ONLY after initializeAdMob() promise completes.
  */
 export const renderBanner = async (): Promise<void> => {
-  if (typeof window !== 'undefined' && (window as any).Capacitor) {
+  if (Capacitor.isNativePlatform()) {
     try {
+      await initializeAdMob();
       const adId = (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || TEST_BANNER_AD_UNIT_ID;
       await AdMob.showBanner({
         adId,
@@ -40,7 +63,7 @@ export const renderBanner = async (): Promise<void> => {
       });
       console.log("Native AdMob banner rendered successfully.");
     } catch (e) {
-      console.warn("Error rendering native AdMob banner:", e);
+      console.error("Error rendering native AdMob banner:", e);
     }
   }
 };
@@ -50,10 +73,11 @@ export const renderBanner = async (): Promise<void> => {
  */
 export const AdManager = {
   BANNER_AD_UNIT_ID: (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || TEST_BANNER_AD_UNIT_ID,
+  INTERSTITIAL_AD_UNIT_ID: (import.meta as any).env.VITE_INTERSTITIAL_AD_UNIT_ID || TEST_INTERSTITIAL_AD_UNIT_ID,
   REWARDED_AD_UNIT_ID: (import.meta as any).env.VITE_REWARDED_AD_UNIT_ID || TEST_REWARDED_AD_UNIT_ID,
 
   isNativeAPK(): boolean {
-    return typeof window !== 'undefined' && !!(window as any).Capacitor;
+    return Capacitor.isNativePlatform();
   },
 
   async init(): Promise<void> {
@@ -65,19 +89,30 @@ export const AdManager = {
   },
 
   async showRewardedAd(onSuccess: () => void, onFailure: () => void): Promise<void> {
-    console.log(`AdManager: showRewardedAd requested. Unit ID: ${this.REWARDED_AD_UNIT_ID}`);
-    
+    const unitId = this.REWARDED_AD_UNIT_ID;
+    console.log(`AdManager: showRewardedAd requested. Unit ID: ${unitId}`);
+
     if (this.isNativeAPK()) {
-      console.log(`AdManager: Native APK environment detected. Triggering native AdMob Rewarded plugin hook with Unit ID: ${this.REWARDED_AD_UNIT_ID}`);
-      setTimeout(() => {
-        try {
-          onSuccess();
-        } catch (e) {
-          console.error("AdManager Error in onSuccess callback:", e);
-        }
-      }, 1000);
+      try {
+        await this.init();
+        const options: RewardAdOptions = {
+          adId: unitId,
+          isTesting: true,
+        };
+        console.log(`AdManager: Preparing native Rewarded Ad with Unit ID: ${unitId}`);
+        await AdMob.prepareRewardVideoAd(options);
+
+        console.log("AdManager: Prepared Rewarded Ad. Showing video...");
+        const result = await AdMob.showRewardVideoAd();
+        console.log("AdManager: Rewarded Ad finished playing with result:", result);
+
+        onSuccess();
+      } catch (e) {
+        console.error("Error loading/showing native Rewarded ad:", e);
+        onFailure();
+      }
     } else {
-      console.log(`AdManager: Web environment detected. Simulating rewarded ad playback for Unit ID: ${this.REWARDED_AD_UNIT_ID}...`);
+      console.log(`AdManager: Web environment detected. Simulating rewarded ad playback for Unit ID: ${unitId}...`);
       return new Promise<void>((resolve) => {
         setTimeout(() => {
           try {
@@ -94,20 +129,28 @@ export const AdManager = {
   },
 
   async showInterstitialAd(onComplete?: () => void): Promise<void> {
-    console.log("AdManager: showInterstitialAd requested.");
-    
+    const unitId = this.INTERSTITIAL_AD_UNIT_ID;
+    console.log(`AdManager: showInterstitialAd requested. Unit ID: ${unitId}`);
+
     if (this.isNativeAPK()) {
-      console.log("AdManager: Native APK environment detected. Triggering native AdMob Interstitial plugin hook.");
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          try {
-            if (onComplete) onComplete();
-          } catch (e) {
-            console.error("AdManager Error in onComplete callback:", e);
-          }
-          resolve();
-        }, 500);
-      });
+      try {
+        await this.init();
+        const options: AdOptions = {
+          adId: unitId,
+          isTesting: true,
+        };
+        console.log(`AdManager: Preparing native Interstitial Ad with Unit ID: ${unitId}`);
+        await AdMob.prepareInterstitial(options);
+
+        console.log("AdManager: Prepared Interstitial Ad. Showing ad...");
+        await AdMob.showInterstitial();
+        console.log("AdManager: Interstitial Ad finished.");
+
+        if (onComplete) onComplete();
+      } catch (e) {
+        console.error("Error loading/showing native Interstitial ad:", e);
+        if (onComplete) onComplete();
+      }
     } else {
       console.log("AdManager: Web environment detected. Simulating interstitial ad...");
       return new Promise<void>((resolve) => {

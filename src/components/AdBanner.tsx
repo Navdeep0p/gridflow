@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { AdMob, BannerAdPluginEvents } from '@capacitor-community/admob';
 
+import { AD_CONFIG } from '../config/adConfig';
+
 export const AdBanner: React.FC = () => {
   const [isNative, setIsNative] = useState<boolean>(false);
   const [adError, setAdError] = useState<boolean>(false);
@@ -67,7 +69,7 @@ export const AdBanner: React.FC = () => {
   }
 
   // On Web platform: display centered 320x50 standard placeholder UI
-  const adUnitId = (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || "ca-app-pub-3940256099942544/6300978111";
+  const adUnitId = AD_CONFIG.BANNER_ID;
   const [adClient, adSlot] = adUnitId.includes('/') ? adUnitId.split('/') : ["ca-pub-3940256099942544", adUnitId];
 
   return (

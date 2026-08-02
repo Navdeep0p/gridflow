@@ -6,11 +6,8 @@ import {
   AdOptions
 } from '@capacitor-community/admob';
 import { Capacitor } from '@capacitor/core';
-
-// Official Google AdMob Test Ad Unit IDs for Android
-const TEST_BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111";
-const TEST_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712";
-const TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917";
+import { AD_CONFIG } from '../config/adConfig';
+import { STORAGE_KEYS, getStorageItemSync, setStorageItem } from './storage';
 
 let isAdMobInitialized = false;
 let initPromise: Promise<void> | null = null;
@@ -54,7 +51,7 @@ export const renderBanner = async (): Promise<void> => {
   if (Capacitor.isNativePlatform()) {
     try {
       await initializeAdMob();
-      const adId = (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || TEST_BANNER_AD_UNIT_ID;
+      const adId = AD_CONFIG.BANNER_ID;
       await AdMob.showBanner({
         adId,
         adSize: BannerAdSize.BANNER,
@@ -73,9 +70,9 @@ export const renderBanner = async (): Promise<void> => {
  * AdManager - Isolated Global Ad Engine Utility
  */
 export const AdManager = {
-  BANNER_AD_UNIT_ID: (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || TEST_BANNER_AD_UNIT_ID,
-  INTERSTITIAL_AD_UNIT_ID: (import.meta as any).env.VITE_INTERSTITIAL_AD_UNIT_ID || TEST_INTERSTITIAL_AD_UNIT_ID,
-  REWARDED_AD_UNIT_ID: (import.meta as any).env.VITE_REWARDED_AD_UNIT_ID || TEST_REWARDED_AD_UNIT_ID,
+  BANNER_AD_UNIT_ID: AD_CONFIG.BANNER_ID,
+  INTERSTITIAL_AD_UNIT_ID: AD_CONFIG.INTERSTITIAL_ID,
+  REWARDED_AD_UNIT_ID: AD_CONFIG.REWARDED_ID,
 
   isNativeAPK(): boolean {
     return Capacitor.isNativePlatform();
@@ -94,14 +91,25 @@ export const AdManager = {
     console.log(`AdManager: showRewardedAd requested. Unit ID: ${unitId}`);
 
     const handleFailure = (errorReason?: string) => {
-      console.error("AdManager Rewarded Ad Failure:", errorReason);
+      console.error("AdManager Rewarded Ad Failure / Frequency Cap:", errorReason);
       if (typeof window !== 'undefined') {
-        alert("Failed to load reward ad. Please turn off your ad blocker or check your internet connection to claim your reward.");
+        alert("No ad available right now. Please try again later.");
       }
       try {
         onFailure();
       } catch (err) {
         console.error("Error in onFailure handler:", err);
+      }
+    };
+
+    const grantStarReward = async () => {
+      try {
+        const currentStars = getStorageItemSync<number>(STORAGE_KEYS.STARS, 0);
+        const updatedStars = currentStars + AD_CONFIG.REWARD_STARS_AMOUNT;
+        await setStorageItem(STORAGE_KEYS.STARS, updatedStars);
+        console.log(`AdManager: Awarded +${AD_CONFIG.REWARD_STARS_AMOUNT} Stars! New Total: ${updatedStars}`);
+      } catch (e) {
+        console.warn("AdManager: Failed to award stars to storage:", e);
       }
     };
 
@@ -120,9 +128,10 @@ export const AdManager = {
         console.log("AdManager: Rewarded Ad finished playing with result:", result);
 
         if (result) {
+          await grantStarReward();
           onSuccess();
         } else {
-          handleFailure("Reward ad did not produce reward item.");
+          handleFailure("Frequency capped or ad load failure.");
         }
       } catch (e: any) {
         handleFailure(e?.message || String(e));
@@ -136,9 +145,10 @@ export const AdManager = {
         }
 
         console.log("AdManager: Simulating web rewarded ad playback...");
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
             console.log("AdManager: Web rewarded ad completed successfully.");
+            await grantStarReward();
             onSuccess();
           } catch (e) {
             console.error("AdManager Error in onSuccess callback:", e);

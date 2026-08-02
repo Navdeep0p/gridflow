@@ -306,6 +306,7 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [currentActiveOverlay, setCurrentActiveOverlay] = useState<'main' | 'settings' | 'about'>('main');
   const [modalAdView, setModalAdView] = useState<boolean>(false);
+  const [actionModal, setActionModal] = useState<{ type: 'undo' | 'restart'; hasEnoughStars: boolean } | null>(null);
 
   // New persistent level tracking, view, and profile states
   const [currentView, setCurrentView] = useState<'landing' | 'game'>('landing');
@@ -511,26 +512,11 @@ export default function App() {
     setFailureCell(null);
   };
 
-  // Manual restart that cleanly wipes the active grid layout without penalties or popups
+  // Opens confirmation dialog modal for Restart (costs 5 Stars or Ad fallback)
   const handleManualRestart = () => {
     if (simulationStatus === 'SIMULATING') return;
-    playFeedback('undo');
-
-    const performReset = () => {
-      setGrid(cloneGrid(initialGrid));
-      setMovesLeft(movesAllowed);
-      setMovesUsed(0);
-      setHistory([]);
-      setSimulationStatus('IDLE');
-      setSimulationPath([]);
-      setFailureCell(null);
-    };
-
-    AdManager.showInterstitialAd(performReset)
-      .catch((err) => {
-        console.warn("AdManager.showInterstitialAd rejected, performing fallback reset:", err);
-        performReset();
-      });
+    playFeedback('click');
+    setActionModal({ type: 'restart', hasEnoughStars: totalStars >= 5 });
   };
 
   // Open restart confirmation modal with star economy checks
@@ -587,40 +573,23 @@ export default function App() {
 
     AdManager.showRewardedAd(
       () => {
-        // onSuccess: clear out failed attempts tracker and reset board
+        // onSuccess: Award +10 Stars AND clear penalty/board state
         setIsAdPlaying(false);
+        const newDeduction = starDeduction - 10;
+        setStarDeduction(newDeduction);
+        setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
+
         setAttemptCount(0);
         setGameOverCount(0);
         setShowGameOverPopup(false);
         setShowPenaltySelection(false);
 
-        setGrid(cloneGrid(initialGrid));
-        setMovesLeft(movesAllowed);
-        setMovesUsed(0);
-        setHistory([]);
-        setSimulationStatus('IDLE');
-        setSimulationPath([]);
-        setFailureCell(null);
+        executeReset();
         playFeedback('success');
       },
       () => {
-        // onFailure: apply the standard 10-star penalty deduction and reset board
+        // onFailure: Toast triggered by adEngine, state remains clean
         setIsAdPlaying(false);
-        const newDeduction = starDeduction + 10;
-        setStarDeduction(newDeduction);
-        setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
-
-        setGameOverCount(0);
-        setShowGameOverPopup(false);
-        setShowPenaltySelection(false);
-
-        setGrid(cloneGrid(initialGrid));
-        setMovesLeft(movesAllowed);
-        setMovesUsed(0);
-        setHistory([]);
-        setSimulationStatus('IDLE');
-        setSimulationPath([]);
-        setFailureCell(null);
         playFeedback('error');
       }
     );
@@ -628,33 +597,88 @@ export default function App() {
 
   // Verifies star balance inside the modal before execution
   const handleConfirmRestart = () => {
-    if (totalStars >= 10) {
-      const newDeduction = starDeduction + 10;
+    if (totalStars >= 5) {
+      const newDeduction = starDeduction + 5;
       setStarDeduction(newDeduction);
       setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
       executeReset();
       setShowRestartConfirm(false);
     } else {
-      console.log("Trigger Ad Placement for Restart Token");
       setModalAdView(true);
     }
   };
 
-  // Restore previous board state from the history stack with star economy deductions
+  // Opens confirmation dialog modal for Undo (costs 1 Star or Ad fallback)
   const undoMove = () => {
     if (simulationStatus !== 'IDLE' || history.length === 0) return;
+    playFeedback('click');
+    setActionModal({ type: 'undo', hasEnoughStars: totalStars >= 1 });
+  };
 
-    if (totalStars >= 3) {
-      const newDeduction = starDeduction + 3;
-      setStarDeduction(newDeduction);
-      setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
+  // Handles confirmation action inside the modal
+  const handleConfirmActionModal = () => {
+    if (!actionModal) return;
+    const { type, hasEnoughStars } = actionModal;
+    setActionModal(null);
 
-      playFeedback('undo');
-      executeUndo();
-    } else {
-      console.log("Trigger Ad Placement for Undo Token");
-      setAdReason('undo');
-      triggerShake();
+    if (type === 'restart') {
+      if (hasEnoughStars) {
+        // Spend 5 Stars & Restart
+        const newDeduction = starDeduction + 5;
+        setStarDeduction(newDeduction);
+        setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
+
+        playFeedback('undo');
+        executeReset();
+      } else {
+        // Watch Short Ad -> Award +5 Stars & Restart
+        playFeedback('warning');
+        setIsAdPlaying(true);
+        AdManager.showRewardedAd(
+          () => {
+            setIsAdPlaying(false);
+            const newDeduction = starDeduction - 5;
+            setStarDeduction(newDeduction);
+            setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
+
+            executeReset();
+            playFeedback('success');
+          },
+          () => {
+            setIsAdPlaying(false);
+            playFeedback('error');
+          }
+        );
+      }
+    } else if (type === 'undo') {
+      if (hasEnoughStars) {
+        // Spend 1 Star & Undo
+        const newDeduction = starDeduction + 1;
+        setStarDeduction(newDeduction);
+        setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
+
+        playFeedback('undo');
+        executeUndo();
+      } else {
+        // Watch Short Ad -> Award +5 Stars & Undo
+        playFeedback('warning');
+        setIsAdPlaying(true);
+        AdManager.showRewardedAd(
+          () => {
+            setIsAdPlaying(false);
+            const newDeduction = starDeduction - 5;
+            setStarDeduction(newDeduction);
+            setStorageItem(STORAGE_KEYS.STAR_DEDUCTION, newDeduction);
+
+            executeUndo();
+            playFeedback('success');
+          },
+          () => {
+            setIsAdPlaying(false);
+            playFeedback('error');
+          }
+        );
+      }
     }
   };
 
@@ -2140,25 +2164,26 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Interactive Ad Placement Flow Overlay */}
+      {/* Action Confirmation Modal (Restart / Undo) */}
       <AnimatePresence>
-        {adReason !== null && (
+        {actionModal !== null && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop with extreme blur */}
+            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/95 backdrop-blur-md"
+              onClick={() => setActionModal(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
             />
 
-            {/* Pre-Ad prompt card: choice to watch ad or cancel */}
+            {/* Confirmation Card */}
             <motion.div
-              initial={{ scale: 0.85, y: 30, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.85, y: 30, opacity: 0 }}
-              transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-              className="relative w-full max-w-sm bg-zinc-950 border border-zinc-900 rounded-2xl p-6 shadow-2xl text-center z-10 space-y-6"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="relative w-full max-w-sm bg-neutral-900 dark:bg-zinc-950 border border-neutral-200/20 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl text-center z-10 space-y-5"
             >
               <div className="flex justify-center">
                 <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
@@ -2166,55 +2191,52 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <h3 className="font-display font-light text-xl text-white tracking-[0.15em] uppercase">
-                  Not Enough Stars
+              <div className="space-y-1.5">
+                <h3 className="font-display font-bold text-lg text-white tracking-wide uppercase">
+                  {actionModal.hasEnoughStars
+                    ? (actionModal.type === 'restart' ? 'Restart Level' : 'Undo Move')
+                    : 'Not Enough Stars!'}
                 </h3>
-                <p className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
-                  {adReason === 'undo' ? "Undo requires 3 Stars" : "Restart requires 10 Stars"}
+                <p className="text-xs text-neutral-300 dark:text-zinc-300 font-sans leading-relaxed">
+                  {actionModal.hasEnoughStars
+                    ? (actionModal.type === 'restart'
+                        ? 'Spend 5 Stars to restart the current level?'
+                        : 'Spend 1 Star to undo your last move?')
+                    : (actionModal.type === 'restart'
+                        ? 'Not enough stars! Watch a short ad to earn +5 Stars and restart free.'
+                        : 'Not enough stars! Watch a short ad to earn +5 Stars and execute 1 Undo.')}
                 </p>
               </div>
 
-              <div className="bg-zinc-900/50 rounded-xl p-4 text-xs text-zinc-400 leading-relaxed border border-zinc-900 space-y-3">
-                <p>
-                  Your current balance is <strong className="text-amber-400 font-mono">{totalStars} Stars</strong>.
-                </p>
-                <p className="text-[11px] text-zinc-500">
-                  Watch a quick sponsor ad to get a <strong className="text-zinc-200">Free Action Token</strong> instead!
-                </p>
+              <div className="bg-neutral-800/60 dark:bg-zinc-900/60 rounded-xl py-2.5 px-4 text-xs flex justify-between items-center border border-neutral-700/40 dark:border-zinc-800">
+                <span className="text-neutral-400 dark:text-zinc-400 font-mono text-[10px] uppercase">Your Stars:</span>
+                <span className="font-mono font-bold text-amber-400 flex items-center gap-1">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  {totalStars}
+                </span>
               </div>
 
-              <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col gap-2.5 pt-1">
                 <button
-                  onClick={() => {
-                    const reason = adReason;
-                    setAdReason(null);
-                    setIsAdPlaying(true);
-                    AdManager.showRewardedAd(
-                      () => {
-                        setIsAdPlaying(false);
-                        if (reason === 'undo') {
-                          executeUndo();
-                        } else if (reason === 'restart') {
-                          executeReset();
-                        }
-                        playFeedback('success');
-                      },
-                      () => {
-                        setIsAdPlaying(false);
-                        playFeedback('error');
-                      }
-                    );
-                  }}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-display font-bold text-xs tracking-[0.1em] uppercase rounded-full shadow-lg active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={handleConfirmActionModal}
+                  className="w-full py-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black font-display font-extrabold text-xs tracking-wider uppercase rounded-xl transition-all shadow-lg active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                  <span>Watch Rewarded Ad</span>
+                  {actionModal.hasEnoughStars ? (
+                    <>
+                      <Star className="w-4 h-4 fill-black" />
+                      <span>{actionModal.type === 'restart' ? 'Spend 5 Stars & Restart' : 'Spend 1 Star & Undo'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 fill-black" />
+                      <span>Watch Short Ad (+5 Stars)</span>
+                    </>
+                  )}
                 </button>
 
                 <button
-                  onClick={() => setAdReason(null)}
-                  className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 font-display font-bold text-xs tracking-[0.1em] uppercase rounded-full active:scale-98 transition-all cursor-pointer"
+                  onClick={() => setActionModal(null)}
+                  className="w-full py-2.5 bg-transparent hover:bg-neutral-800 dark:hover:bg-zinc-900 text-neutral-400 dark:text-zinc-400 font-mono text-[11px] tracking-wider uppercase rounded-xl transition-all cursor-pointer"
                 >
                   Cancel
                 </button>

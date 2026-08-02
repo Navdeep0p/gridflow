@@ -36,6 +36,7 @@ build/
 # Gradle & Android IDE generated structures
 .gradle/
 local.properties
+android/local.properties
 .navigation/
 captures/
 .externalNativeBuild/

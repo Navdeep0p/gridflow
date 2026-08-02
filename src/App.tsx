@@ -37,6 +37,7 @@ import { AdBanner } from './components/AdBanner';
 import { AdMob } from '@capacitor-community/admob';
 import { Browser } from '@capacitor/browser';
 import { triggerHaptic, triggerTileHaptic, HapticType } from './utils/haptics';
+import { audioManager, SoundType } from './utils/audio';
 import { STORAGE_KEYS, setStorageItem, getStorageItemSync, hydrateStorageFromNative, saveLevelComplete } from './utils/storage';
 
 const cloneGrid = (g: Cell[][]): Cell[][] => JSON.parse(JSON.stringify(g));
@@ -184,97 +185,9 @@ export default function App() {
     triggerHaptic(type, hapticIntensity);
   };
 
-  const playSound = (type: 'click' | 'undo' | 'success' | 'warning' | 'error') => {
+  const playSound = (type: SoundType) => {
     if (!soundEnabled || audioVolume === 0) return;
-
-    try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const ctx = new AudioContextClass();
-      
-      const gainNode = ctx.createGain();
-      gainNode.gain.setValueAtTime(audioVolume, ctx.currentTime);
-      gainNode.connect(ctx.destination);
-
-      if (type === 'click') {
-        const osc = ctx.createOscillator();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(200, ctx.currentTime);
-        
-        // Rapid exponential decay on gainNode (dropping from master volume to 0 within 0.04 seconds)
-        const startVolume = Math.max(audioVolume, 0.0001);
-        gainNode.gain.setValueAtTime(startVolume, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.04);
-        
-        osc.connect(gainNode);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.04);
-      } else if (type === 'undo') {
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(400, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(250, ctx.currentTime + 0.15);
-        osc.connect(gainNode);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.15);
-      } else if (type === 'success') {
-        const notes = [523, 659, 784];
-        notes.forEach((freq, idx) => {
-          const osc = ctx.createOscillator();
-          const noteGain = ctx.createGain();
-          
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.1);
-          
-          noteGain.gain.setValueAtTime(audioVolume * 0.6, ctx.currentTime + idx * 0.1);
-          noteGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + idx * 0.1 + 0.25);
-          
-          osc.connect(noteGain);
-          noteGain.connect(ctx.destination);
-          
-          osc.start(ctx.currentTime + idx * 0.1);
-          osc.stop(ctx.currentTime + idx * 0.1 + 0.25);
-        });
-      } else if (type === 'warning') {
-        const osc = ctx.createOscillator();
-        const warnGain = ctx.createGain();
-        
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(220, ctx.currentTime);
-        
-        warnGain.gain.setValueAtTime(audioVolume * 0.8, ctx.currentTime);
-        warnGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-        
-        osc.connect(warnGain);
-        warnGain.connect(ctx.destination);
-        
-        osc.start();
-        osc.stop(ctx.currentTime + 0.2);
-      } else if (type === 'error') {
-        const osc1 = ctx.createOscillator();
-        const osc2 = ctx.createOscillator();
-        const errGain = ctx.createGain();
-        
-        osc1.type = 'sawtooth';
-        osc1.frequency.setValueAtTime(150, ctx.currentTime);
-        osc2.type = 'square';
-        osc2.frequency.setValueAtTime(155, ctx.currentTime);
-        
-        errGain.gain.setValueAtTime(audioVolume * 0.5, ctx.currentTime);
-        errGain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-        
-        osc1.connect(errGain);
-        osc2.connect(errGain);
-        errGain.connect(ctx.destination);
-        
-        osc1.start();
-        osc2.start();
-        osc1.stop(ctx.currentTime + 0.4);
-        osc2.stop(ctx.currentTime + 0.4);
-      }
-    } catch (e) {
-      console.warn("AudioContext error:", e);
-    }
+    audioManager.playSound(type, audioVolume);
   };
 
   const playFeedback = (profile: 'click' | 'undo' | 'success' | 'warning' | 'error') => {
@@ -489,12 +402,11 @@ export default function App() {
   const currentThemeIndex = Math.floor((level - 1) / 5) % THEMES.length;
   const currentTheme = THEMES[currentThemeIndex];
 
-  // Helper to trigger haptic shake on failure/errors
   const triggerShake = () => {
     setIsShaking(true);
     // Visual haptic style click feedback if enabled
-    if (soundEnabled && navigator.vibrate) {
-      navigator.vibrate(80);
+    if (soundEnabled) {
+      triggerAppHaptic('error');
     }
     setTimeout(() => setIsShaking(false), 500);
   };
@@ -887,8 +799,9 @@ export default function App() {
       setSimulationPath(nextPath);
 
       // Play minor sequential flow sound tick (simulate haptic)
-      if (soundEnabled && navigator.vibrate) {
-        navigator.vibrate(10);
+      if (soundEnabled) {
+        audioManager.playSound('flowTick', audioVolume);
+        triggerTileHaptic(hapticIntensity);
       }
 
       // Standard delay for flow pacing

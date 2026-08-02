@@ -947,7 +947,9 @@ export default function App() {
 
       {currentView === 'landing' ? (
         /* LANDING VIEW WITH CYBERPUNK THEME */
-        <div className="w-full max-w-md flex-1 flex flex-col justify-between items-center z-10 px-6 relative overflow-hidden pb-36">
+        <div className={`w-full max-w-md flex-1 flex flex-col justify-between items-center z-10 px-6 relative overflow-hidden ${
+          Capacitor.isNativePlatform() ? 'pb-52' : 'pb-36'
+        }`}>
           {landingTab === 'home' ? (
             <div className="w-full flex-1 flex flex-col overflow-hidden">
               {/* Profile greeting */}
@@ -1377,7 +1379,9 @@ export default function App() {
           </div>
 
           {/* Fixed Bottom Navigation exclusively visible on the landing view */}
-          <div className="absolute bottom-0 left-0 right-0 h-18 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 backdrop-blur-md flex items-center justify-around px-6 z-30 max-w-md mx-auto">
+          <div className={`absolute left-0 right-0 h-18 bg-white dark:bg-neutral-950 border-t border-neutral-200 dark:border-neutral-800 backdrop-blur-md flex items-center justify-around px-6 z-30 max-w-md mx-auto transition-all ${
+            Capacitor.isNativePlatform() ? 'bottom-[60px]' : 'bottom-0'
+          }`}>
             {/* HOME Tab Button */}
             <button
               onClick={() => setLandingTab('home')}

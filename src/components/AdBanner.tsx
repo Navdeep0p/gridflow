@@ -1,28 +1,56 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { AdMob, BannerAdPluginEvents } from '@capacitor-community/admob';
 
 export const AdBanner: React.FC = () => {
   const [isNative, setIsNative] = useState<boolean>(false);
+  const [adError, setAdError] = useState<boolean>(false);
 
   useEffect(() => {
     const native = Capacitor.isNativePlatform();
     setIsNative(native);
-    if (!native) {
+
+    if (native) {
+      // Listen for native AdMob banner load errors
+      const errorListener = AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err) => {
+        console.warn("Native AdMob Banner failed to load:", err);
+        setAdError(true);
+      });
+
+      return () => {
+        errorListener.then((handle) => handle.remove()).catch(() => {});
+      };
+    } else {
       try {
-        // Safe check for DOM environments to register dynamic ad rendering
-        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+        if (typeof window !== 'undefined') {
+          if (!navigator.onLine) {
+            setAdError(true);
+          } else {
+            ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+          }
+        }
       } catch (e) {
-        // Benign warning in development/mock environments
-        console.log("AdBanner: Pushed web ad slot registration.");
+        console.warn("AdBanner web ad blocker or script error:", e);
+        setAdError(true);
       }
     }
   }, []);
 
-  const adUnitId = (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || "ca-app-pub-3940256099942544/6300978111";
-  const [adClient, adSlot] = adUnitId.includes('/') ? adUnitId.split('/') : ["ca-pub-3940256099942544", adUnitId];
+  // If ad failed to load (due to network failure, missing fill, or ad blocker), display sleek fallback message
+  if (adError) {
+    return (
+      <div 
+        id="ad-banner-fallback"
+        className="w-full py-2.5 px-4 flex items-center justify-center bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 rounded-xl text-center shadow-xs"
+      >
+        <span className="text-[11px] font-mono text-amber-700 dark:text-amber-300 font-medium tracking-tight">
+          Please turn off your ad blocker to support GridFlow.
+        </span>
+      </div>
+    );
+  }
 
-  // If running on a native platform (isNative === true):
-  // Hide the web fallback placeholder (MOBILE APK AD SLOT) and reserve an invisible spacer element (height: 60px) in DOM
+  // On Native platform: hide web fallback placeholder and reserve an invisible 60px spacer in DOM
   if (isNative) {
     return (
       <div 
@@ -34,7 +62,10 @@ export const AdBanner: React.FC = () => {
     );
   }
 
-  // If running on the web (isNative === false): continue displaying dark dashed placeholder UI as normal
+  // On Web platform: display standard placeholder UI
+  const adUnitId = (import.meta as any).env.VITE_BANNER_AD_UNIT_ID || "ca-app-pub-3940256099942544/6300978111";
+  const [adClient, adSlot] = adUnitId.includes('/') ? adUnitId.split('/') : ["ca-pub-3940256099942544", adUnitId];
+
   return (
     <div 
       id="ad-banner-container"
@@ -50,7 +81,7 @@ export const AdBanner: React.FC = () => {
           data-ad-format="horizontal"
           data-full-width-responsive="true"
         />
-        {/* Seamless aesthetic placeholder when actual external scripts aren't running */}
+        {/* Aesthetic placeholder when external ad script is inactive */}
         <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center bg-neutral-100/90 dark:bg-zinc-950/90 gap-0.5">
           <span className="font-bold text-neutral-600 dark:text-zinc-400">Sponsored Ad Space</span>
           <span className="text-[8px] text-neutral-500 dark:text-zinc-600 tracking-normal normal-case">Responsive Google Ads Active</span>

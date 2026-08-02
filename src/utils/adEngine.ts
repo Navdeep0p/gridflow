@@ -48,7 +48,6 @@ export const initializeAdMob = async (): Promise<void> => {
 
 /**
  * Renders native AdMob bottom banner using Google's public Test Banner ID.
- * Should be called ONLY after initializeAdMob() promise completes.
  */
 export const renderBanner = async (): Promise<void> => {
   if (Capacitor.isNativePlatform()) {
@@ -92,6 +91,18 @@ export const AdManager = {
     const unitId = this.REWARDED_AD_UNIT_ID;
     console.log(`AdManager: showRewardedAd requested. Unit ID: ${unitId}`);
 
+    const handleFailure = (errorReason?: string) => {
+      console.error("AdManager Rewarded Ad Failure:", errorReason);
+      if (typeof window !== 'undefined') {
+        alert("Failed to load reward ad. Please turn off your ad blocker or check your internet connection to claim your reward.");
+      }
+      try {
+        onFailure();
+      } catch (err) {
+        console.error("Error in onFailure handler:", err);
+      }
+    };
+
     if (this.isNativeAPK()) {
       try {
         await this.init();
@@ -106,25 +117,35 @@ export const AdManager = {
         const result = await AdMob.showRewardVideoAd();
         console.log("AdManager: Rewarded Ad finished playing with result:", result);
 
-        onSuccess();
-      } catch (e) {
-        console.error("Error loading/showing native Rewarded ad:", e);
-        onFailure();
+        if (result) {
+          onSuccess();
+        } else {
+          handleFailure("Reward ad did not produce reward item.");
+        }
+      } catch (e: any) {
+        handleFailure(e?.message || String(e));
       }
     } else {
-      console.log(`AdManager: Web environment detected. Simulating rewarded ad playback for Unit ID: ${unitId}...`);
-      return new Promise<void>((resolve) => {
+      console.log(`AdManager: Web environment detected for Unit ID: ${unitId}`);
+      try {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          handleFailure("Browser offline");
+          return;
+        }
+
+        console.log("AdManager: Simulating web rewarded ad playback...");
         setTimeout(() => {
           try {
-            console.log("AdManager: Simulated rewarded ad completed successfully.");
+            console.log("AdManager: Web rewarded ad completed successfully.");
             onSuccess();
           } catch (e) {
             console.error("AdManager Error in onSuccess callback:", e);
-            onFailure();
+            handleFailure(String(e));
           }
-          resolve();
         }, 1000);
-      });
+      } catch (e: any) {
+        handleFailure(e?.message || String(e));
+      }
     }
   },
 
